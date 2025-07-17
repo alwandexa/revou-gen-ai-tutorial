@@ -7,6 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.domain.document import DocumentChunk
 from src.infrastructure.openai_service import OpenAIService
 from src.usecase.document_usecase import DocumentUsecase
+from src.infrastructure.langsmith_setup import setup_langsmith, get_tracer
 import os
 
 class ChatState(TypedDict):
@@ -23,11 +24,19 @@ class LangGraphChat:
     def __init__(self, openai_service: OpenAIService, document_usecase: Optional[DocumentUsecase] = None):
         self.openai_service = openai_service
         self.document_usecase = document_usecase
+        
+        # Setup LangSmith
+        self.langsmith_client = setup_langsmith()
+        self.tracer = get_tracer()
+        
+        # Initialize LLM with tracing
         self.llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0.7,
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=os.getenv("OPENAI_API_KEY"),
+            callbacks=[self.tracer] if self.tracer else None
         )
+        
         self.memory = MemorySaver()
         self.graph = self._create_graph()
 
@@ -141,6 +150,7 @@ class LangGraphChat:
         # Convert result to string and strip
         result_text = str(result.content) if hasattr(result, 'content') else str(result)
         state["query"] = result_text.strip()
+        
         return state
 
     def _generate_answer(self, state: ChatState) -> ChatState:
@@ -175,7 +185,11 @@ class LangGraphChat:
 
     def chat(self, query: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Chat with the document-based system"""
-        config = {"configurable": {"thread_id": session_id}} if session_id else {}
+        # Always provide a thread_id for the checkpointer
+        if not session_id:
+            session_id = "default_session"
+        
+        config = {"configurable": {"thread_id": session_id}}
         
         # Initialize state
         state = ChatState(
