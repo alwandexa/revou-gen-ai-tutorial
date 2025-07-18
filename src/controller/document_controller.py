@@ -42,7 +42,7 @@ def get_langgraph_chat() -> LangGraphChat:
 @app.post("/documents/upload")
 async def upload_document(file: UploadFile = File(...)):
     """Upload and process a PDF document"""
-    if not file.filename.endswith('.pdf'):
+    if not file.filename or not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
     
     try:
@@ -86,12 +86,16 @@ async def list_documents():
             DocumentResponse(
                 id=doc.id,
                 filename=doc.filename,
-                uploaded_at=doc.uploaded_at.isoformat(),
+                uploaded_at=doc.uploaded_at.isoformat() if doc.uploaded_at else "",
                 chunk_count=len(doc.chunks)
             )
             for doc in documents
         ]
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Error in list_documents: {e}")
+        print(f"Traceback: {error_details}")
         raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
 
 @app.delete("/documents/{document_id}")

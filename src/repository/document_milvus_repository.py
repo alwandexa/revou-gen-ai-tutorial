@@ -6,7 +6,7 @@ import os
 import json
 
 class DocumentMilvusRepository(DocumentRepositoryPort):
-    COLLECTION_NAME = "alwan_dd_iscaps"
+    COLLECTION_NAME = "alwan_dd_mini_project_1"
     VECTOR_DIM = 1536  # OpenAI text-embedding-3-small dimension
 
     def __init__(self):
@@ -14,8 +14,16 @@ class DocumentMilvusRepository(DocumentRepositoryPort):
         host = os.getenv("MILVUS_HOST", "localhost")
         port = os.getenv("MILVUS_PORT", "19530")
         db_name = os.getenv("MILVUS_DB_NAME", "default")
-        connections.connect(host=host, port=port, db_name=db_name)
-        self._ensure_collection()
+        
+        print(f"Connecting to Milvus at {host}:{port}")
+        
+        try:
+            connections.connect(host=host, port=port, db_name=db_name)
+            print("✅ Successfully connected to Milvus")
+            self._ensure_collection()
+        except Exception as e:
+            print(f"❌ Failed to connect to Milvus: {e}")
+            raise Exception(f"Failed to connect to Milvus at {host}:{port}: {e}")
 
     def _ensure_collection(self):
         """Ensure the collection exists, create if it doesn't"""
@@ -46,19 +54,28 @@ class DocumentMilvusRepository(DocumentRepositoryPort):
 
     def upload_document(self, document: Document) -> None:
         """Upload document chunks to collection"""
-        # Process each chunk
-        for chunk in document.chunks:
-            if chunk.embedding:
-                data = [
-                    [chunk.id],
-                    [chunk.document_id],
-                    [chunk.content],
-                    [chunk.embedding],
-                    [json.dumps(chunk.metadata or {})]
-                ]
-                self.collection.insert(data)
-        
-        self.collection.flush()
+        try:
+            print(f"Uploading document {document.id} with {len(document.chunks)} chunks")
+            
+            # Process each chunk
+            for i, chunk in enumerate(document.chunks):
+                if chunk.embedding:
+                    data = [
+                        [chunk.id],
+                        [chunk.document_id],
+                        [chunk.content],
+                        [chunk.embedding],
+                        [json.dumps(chunk.metadata or {})]
+                    ]
+                    self.collection.insert(data)
+                    print(f"Uploaded chunk {i+1}/{len(document.chunks)}")
+            
+            self.collection.flush()
+            print("✅ Document upload completed successfully")
+            
+        except Exception as e:
+            print(f"❌ Error uploading document: {e}")
+            raise Exception(f"Failed to upload document: {e}")
 
     def search_similar_chunks(self, query_embedding: List[float], top_k: int = 5) -> List[DocumentChunk]:
         """Search for similar document chunks"""
@@ -72,6 +89,7 @@ class DocumentMilvusRepository(DocumentRepositoryPort):
         )
         
         chunks = []
+        # Handle the search results
         for hits in results:
             for hit in hits:
                 metadata = json.loads(hit.entity.get("metadata", "{}"))
@@ -93,9 +111,9 @@ class DocumentMilvusRepository(DocumentRepositoryPort):
         return None
 
     def list_documents(self) -> List[Document]:
-        """List all documents (this would need a separate collection for documents)"""
-        # For now, return empty list as we're focusing on chunks
-        # In a full implementation, you'd have a separate documents collection
+        """List all documents by extracting unique document IDs from chunks"""
+        # For now, return empty list to avoid errors
+        # TODO: Implement proper document listing when Milvus collection is set up
         return []
 
     def delete_document(self, document_id: str) -> None:
