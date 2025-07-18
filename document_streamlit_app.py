@@ -114,63 +114,51 @@ with st.sidebar:
         
         st.divider()
     
-    # Document management section
-    st.subheader("📚 Documents")
-    
-    try:
-        documents = list_documents()
-        if documents:
-            for doc in documents:
-                with st.expander(f"📄 {doc['filename']}"):
-                    st.write(f"**ID:** {doc['id']}")
-                    st.write(f"**Chunks:** {doc['chunk_count']}")
-                    st.write(f"**Uploaded:** {doc['uploaded_at']}")
-                    
-                    if st.button(f"Delete", key=f"doc_del_{doc['id']}"):
-                        try:
-                            delete_document(doc['id'])
-                            st.success("Document deleted successfully!")
-                            st.rerun()
-                        except requests.exceptions.RequestException as e:
-                            st.error(f"Error deleting document: {e}")
-        else:
-            st.info("No documents uploaded yet.")
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error loading documents: {e}")
-
-# Main chat interface
-st.title("📚 Document-Based Chatbot")
-st.write("Upload PDF documents and chat with them using LangGraph and vector search")
-
-# Document upload section
-with st.expander("📤 Upload Documents", expanded=False):
-    st.write("Upload PDF documents to add to your knowledge base")
+    # Document upload section in sidebar
+    st.subheader("📚 Upload Documents")
     
     uploaded_file = st.file_uploader(
         "Choose a PDF file", 
         type=['pdf'],
         help="Only PDF files are supported",
-        key="file_uploader"
+        key="sidebar_file_uploader"
     )
     
     if uploaded_file is not None:
         st.write(f"**File:** {uploaded_file.name}")
         st.write(f"**Size:** {uploaded_file.size} bytes")
         
-        if st.button("Upload Document", key="upload_btn"):
+        if st.button("Upload Document", key="sidebar_upload_btn"):
             try:
                 with st.spinner("Processing document..."):
                     result = upload_document(uploaded_file.read(), uploaded_file.name)
                 
                 st.success(f"✅ Document uploaded successfully!")
-                st.write(f"**Document ID:** {result['id']}")
-                st.write(f"**Chunks created:** {result['chunk_count']}")
-                st.write(f"**Uploaded at:** {result['uploaded_at']}")
+                
+                # Handle the response safely
+                if isinstance(result, dict):
+                    doc_id = result.get('id', 'Unknown')
+                    chunk_count = result.get('chunk_count', 0)
+                    uploaded_at = result.get('uploaded_at', 'Unknown')
+                    
+                    st.write(f"**Document ID:** {doc_id}")
+                    st.write(f"**Chunks created:** {chunk_count}")
+                    st.write(f"**Uploaded at:** {uploaded_at}")
+                else:
+                    st.write(f"**Response:** {result}")
                 
                 st.rerun()
                 
             except requests.exceptions.RequestException as e:
                 st.error(f"Error uploading document: {e}")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
+                st.write(f"**Response type:** {type(result)}")
+                st.write(f"**Response:** {result}")
+
+# Main chat interface
+st.title("📚 Document-Based Chatbot")
+st.write("Upload PDF documents and chat with them using LangGraph and vector search")
 
 # Get current conversation
 current_conversation = get_current_conversation()
@@ -185,7 +173,7 @@ if current_conversation:
             key=f"title_{current_conversation['id']}"
         )
         if new_title != current_conversation["title"]:
-            update_conversation_title(current_conversation["id"], new_title)
+            update_conversation_title(current_conversation["id"], new_title or "Untitled")
     
     with col2:
         st.write(f"**Created:** {current_conversation['created_at']}")
